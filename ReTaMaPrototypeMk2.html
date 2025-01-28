@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reorderable Task Manager</title>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #2196f3;
+      --primary-hover: #1976d2;
+      --secondary-color: #e3f2fd;
+      --secondary-border: #90caf9;
+      --detail-color: #fce4ec;
+      --detail-border: #f8bbd0;
+      --delete-zone-color: #ffe0e0;
+      --delete-zone-border: #f44336;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 10px;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      color: var(--primary-color);
+    }
+
+    #taskForm {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    #taskInput {
+      flex-grow: 1;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    button {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    #taskContainer {
+      margin-top: 20px;
+    }
+
+    .task {
+      background: var(--secondary-color);
+      border: 1px solid var(--secondary-border);
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 5px;
+      cursor: grab;
+      transition: box-shadow 0.3s, transform 0.2s;
+    }
+
+    .task-content {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .task.dragging {
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      background: #dcedc8; /* Light green */
+    }
+
+    .sublist {
+      list-style: none;
+      padding-left: 20px;
+      margin: 10px 0 0;
+    }
+
+    .sublist li {
+      background: var(--detail-color);
+      border: 1px solid var(--detail-border);
+      margin: 5px 0;
+      padding: 5px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: transform 0.2s;
+    }
+
+    .sublist input {
+      border: none;
+      background: transparent;
+      flex-grow: 1;
+      margin-right: 10px;
+      padding: 5px;
+    }
+
+    .sublist input:focus {
+      outline: none;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    .add-detail-input {
+      display: block;
+      margin: 10px 0 0 0;
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      width: 100%;
+    }
+
+    #deleteZone {
+      margin-top: 20px;
+      background: var(--delete-zone-color);
+      padding: 20px;
+      border-radius: 5px;
+      text-align: center;
+      font-weight: bold;
+      color: #900;
+      border: 2px dashed var(--delete-zone-border);
+      min-height: 50px;
+      transition: transform 0.3s, border-color 0.3s;
+    }
+
+    #deleteZone.drag-over {
+      transform: scale(1.05);
+      border-color: #d32f2f;
+      box-shadow: 0 0 10px #d32f2f;
+      background: #ff8888;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+
+      .task {
+        padding: 8px;
+      }
+
+      button {
+        padding: 5px 10px;
+        font-size: 0.9rem;
+      }
+
+      #taskInput {
+        padding: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Reorderable Task Manager</h1>
+  <form id="taskForm">
+    <input type="text" id="taskInput" placeholder="Enter a new task" required>
+    <button type="submit">Add Task</button>
+  </form>
+  <div id="taskContainer"></div>
+  <div id="deleteZone">Drag tasks here to delete</div>
+
+  <script>
+    // Utility for localStorage
+    const storage = {
+      get: (key) => JSON.parse(localStorage.getItem(key)) || [],
+      set: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
+    };
+
+    const taskForm = document.getElementById('taskForm');
+    const taskInput = document.getElementById('taskInput');
+    const taskContainer = document.getElementById('taskContainer');
+    const deleteZone = document.getElementById('deleteZone');
+    const STORAGE_KEY = 'tasks';
+
+    // Initialize sortable for main tasks
+    new Sortable(taskContainer, {
+      animation: 150,
+      onEnd: saveOrder,
+    });
+
+    // Create a new task
+    function createTaskElement(taskText, details = []) {
+      const taskDiv = document.createElement('div');
+      taskDiv.className = 'task';
+      taskDiv.draggable = true;
+
+      const taskContent = document.createElement('div');
+      taskContent.className = 'task-content';
+
+      const taskName = document.createElement('span');
+      taskName.textContent = taskText;
+
+      const addDetailInput = document.createElement('input');
+      addDetailInput.type = 'text';
+      addDetailInput.placeholder = 'Add detail and press Enter';
+      addDetailInput.className = 'add-detail-input';
+
+      addDetailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && addDetailInput.value.trim()) {
+          const detailText = addDetailInput.value.trim();
+          createSublistElement(detailText, sublist, taskText);
+          addDetailToTask(taskText, detailText);
+          addDetailInput.value = '';
+        }
+      });
+
+      const sublist = document.createElement('ul');
+      sublist.className = 'sublist';
+
+      details.forEach(detail => createSublistElement(detail, sublist, taskText));
+
+      taskContent.appendChild(taskName);
+      taskContent.appendChild(addDetailInput);
+      taskDiv.appendChild(taskContent);
+      taskDiv.appendChild(sublist);
+
+      taskDiv.addEventListener('dragstart', () => {
+        taskDiv.classList.add('dragging');
+      });
+
+      taskDiv.addEventListener('dragend', () => {
+        taskDiv.classList.remove('dragging');
+      });
+
+      taskContainer.appendChild(taskDiv);
+      makeSublistSortable(sublist, taskText);
+    }
+
+    // Create a sublist detail
+    function createSublistElement(detailText, sublist, taskText) {
+      const sublistItem = document.createElement('li');
+      const detailInput = document.createElement('input');
+      detailInput.type = 'text';
+      detailInput.value = detailText;
+
+      detailInput.addEventListener('change', () => {
+        updateTaskDetails(taskText, Array.from(sublist.children).map(item => item.querySelector('input').value));
+      });
+
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = 'X';
+      deleteButton.addEventListener('click', () => {
+        sublist.removeChild(sublistItem);
+        updateTaskDetails(taskText, Array.from(sublist.children).map(item => item.querySelector('input').value));
+      });
+
+      sublistItem.appendChild(detailInput);
+      sublistItem.appendChild(deleteButton);
+      sublist.appendChild(sublistItem);
+    }
+
+    // Sublist sorting
+    function makeSublistSortable(sublist, taskText) {
+      new Sortable(sublist, {
+        animation: 150,
+        onEnd: () => {
+          const newDetails = Array.from(sublist.children).map(item => item.querySelector('input').value);
+          updateTaskDetails(taskText, newDetails);
+        },
+      });
+    }
+
+    // Delete zone handling
+    deleteZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      deleteZone.classList.add('drag-over');
+    });
+
+    deleteZone.addEventListener('dragleave', () => {
+      deleteZone.classList.remove('drag-over');
+    });
+
+    deleteZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      deleteZone.classList.remove('drag-over');
+      const draggedTask = document.querySelector('.dragging');
+      if (draggedTask) {
+        const taskText = draggedTask.querySelector('span').textContent;
+        removeTaskFromStorage(taskText);
+        taskContainer.removeChild(draggedTask);
+      }
+    });
+
+    // Task storage operations
+    function saveTask(task) {
+      const tasks = storage.get(STORAGE_KEY);
+      tasks.push(task);
+      storage.set(STORAGE_KEY, tasks);
+    }
+
+    function addDetailToTask(taskText, detailText) {
+      const tasks = storage.get(STORAGE_KEY);
+      const task = tasks.find(t => t.task === taskText);
+      if (task) task.details.push(detailText);
+      storage.set(STORAGE_KEY, tasks);
+    }
+
+    function updateTaskDetails(taskText, newDetails) {
+      const tasks = storage.get(STORAGE_KEY);
+      const task = tasks.find(t => t.task === taskText);
+      if (task) task.details = newDetails;
+      storage.set(STORAGE_KEY, tasks);
+    }
+
+    function removeTaskFromStorage(taskText) {
+      let tasks = storage.get(STORAGE_KEY);
+      tasks = tasks.filter(t => t.task !== taskText);
+      storage.set(STORAGE_KEY, tasks);
+    }
+
+    function saveOrder() {
+      const tasks = Array.from(taskContainer.children).map(taskDiv => {
+        const taskText = taskDiv.querySelector('span').textContent;
+        const sublist = taskDiv.querySelector('.sublist');
+        const details = Array.from(sublist.children).map(li => li.querySelector('input').value);
+        return { task: taskText, details };
+      });
+      storage.set(STORAGE_KEY, tasks);
+    }
+
+    function loadTasks() {
+      const tasks = storage.get(STORAGE_KEY);
+      tasks.forEach(t => createTaskElement(t.task, t.details));
+    }
+
+    // Initializations
+    taskForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const taskText = taskInput.value.trim();
+      if (!taskText) return;
+      createTaskElement(taskText);
+      saveTask({ task: taskText, details: [] });
+      taskInput.value = '';
+    });
+
+    document.addEventListener('DOMContentLoaded', loadTasks);
+  </script>
+</body>
+</html>
